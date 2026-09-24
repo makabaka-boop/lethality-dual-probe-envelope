@@ -2,6 +2,9 @@ const FIELD_LABELS = {
   time: '时间(秒)',
   temperature: '温度(°C)',
   points: '采样点',
+  probe: '双探头',
+  probeA: '探头A',
+  probeB: '探头B',
   body: '请求体',
 };
 

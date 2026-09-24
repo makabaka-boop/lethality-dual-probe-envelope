@@ -171,6 +171,106 @@ def main() -> int:
         f"{status} {body}",
     )
 
+    # 11. 双探头保守复核：相同探头 ⇒ 保守总量 3.00，各段 both
+    dual_same = {"probeA": {"points": passing["points"]}, "probeB": {"points": passing["points"]}}
+    status, body = request("POST", f"{API_URL}/api/lethality/dual", dual_same)
+    ok = (
+        status == 200
+        and body.get("passed") is True
+        and abs(body.get("conservativeUnrounded", 0) - 3.0) < 1e-9
+        and len(body.get("segments", [])) == 3
+        and all(s.get("source") == "both" for s in body.get("segments", []))
+        and abs(body.get("probeATotalUnrounded", 0) - 3.0) < 1e-9
+        and abs(body.get("probeBTotalUnrounded", 0) - 3.0) < 1e-9
+    )
+    check("双探头相同：保守 F₀=3.00、各段标 both、两探头总量一致", ok, f"{status} {body}")
+
+    # 12. 双探头内部换源：A 1→3、B 3→1（速率），交点 t=30，保守总量 1.5，
+    # 两段来源分别为 probeA、probeB；严格小于两探头各自的 2.0
+    import math
+
+    def temp_for_rate(rate: float) -> float:
+        return 121.1 + 10.0 * math.log10(rate)
+
+    dual_cross = {
+        "probeA": {"points": [
+            {"time": 0, "temperature": temp_for_rate(1.0)},
+            {"time": 30, "temperature": temp_for_rate(2.0)},
+            {"time": 60, "temperature": temp_for_rate(3.0)},
+        ]},
+        "probeB": {"points": [
+            {"time": 0, "temperature": temp_for_rate(3.0)},
+            {"time": 60, "temperature": temp_for_rate(1.0)},
+        ]},
+    }
+    status, body = request("POST", f"{API_URL}/api/lethality/dual", dual_cross)
+    segments = (body or {}).get("segments", []) if isinstance(body, dict) else []
+    sources = [s.get("source") for s in segments]
+    ok = (
+        status == 200
+        and sources == ["probeA", "probeB"]
+        and len(segments) == 2
+        and abs(segments[0].get("endTime", -1) - 30.0) < 1e-9
+        and abs(body.get("conservativeUnrounded", 0) - 1.5) < 1e-9
+        and body.get("conservativeUnrounded", 9) < body.get("probeATotalUnrounded", 0)
+        and body.get("conservativeUnrounded", 9) < body.get("probeBTotalUnrounded", 0)
+        and body.get("passed") is False  # 1.5 < 3.00
+    )
+    check(
+        "双探头换源：交点拆段 probeA→probeB、保守总量 1.5 且非两总量较小值",
+        ok,
+        f"{status} {sources} {body if not ok else ''}",
+    )
+
+    # 13. 双探头校验：按探头定位行
+    bad_dual = {
+        "probeA": {"points": passing["points"]},
+        "probeB": {"points": [
+            {"time": 0, "temperature": 121.1},
+            {"time": 61, "temperature": 121.1},
+        ]},
+    }
+    status, body = request("POST", f"{API_URL}/api/lethality/dual", bad_dual)
+    errors = (body or {}).get("detail", {}).get("errors", [])
+    check(
+        "双探头超间隔返回 422 并定位 probeB 第 2 行 time",
+        status == 422
+        and any(
+            e.get("probe") == "probeB" and e.get("row") == 2 and e.get("field") == "time"
+            for e in errors
+        ),
+        f"{status} {body}",
+    )
+
+    # 14. 双探头结束秒不一致
+    end_mismatch = {
+        "probeA": {"points": [
+            {"time": 0, "temperature": 121.1},
+            {"time": 60, "temperature": 121.1},
+            {"time": 120, "temperature": 121.1},
+        ]},
+        "probeB": {"points": [
+            {"time": 0, "temperature": 121.1},
+            {"time": 60, "temperature": 121.1},
+        ]},
+    }
+    status, body = request("POST", f"{API_URL}/api/lethality/dual", end_mismatch)
+    errors = (body or {}).get("detail", {}).get("errors", [])
+    check(
+        "双探头结束秒不一致返回 422",
+        status == 422 and any("同一秒" in e.get("message", "") for e in errors),
+        f"{status} {body}",
+    )
+
+    # 15. 旧接口保持兼容：响应不含双探头字段
+    status, body = request("POST", f"{API_URL}/api/lethality", passing)
+    check(
+        "单探头接口响应结构保持不变",
+        status == 200
+        and set(body.keys()) == {"f0", "threshold", "passed", "shortfall", "segments"},
+        f"{status} {body}",
+    )
+
     print("=" * 48, flush=True)
     if failures:
         print(f"验收失败：{len(failures)} 项未通过", flush=True)

@@ -148,3 +148,106 @@ button.primary {
   font-weight: 600;
   background: #eef2f6;
 }
+
+/* 模式切换 */
+.mode-switch {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+  border-bottom: 2px solid #d9e2ec;
+}
+
+.mode-switch button {
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  padding: 8px 18px;
+  font-weight: 600;
+  color: #52606d;
+}
+
+.mode-switch button.active {
+  color: #0b6bcb;
+  border-bottom-color: #0b6bcb;
+}
+
+/* 双探头录入区并列 */
+.probe-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.probe-editor h3 {
+  font-size: 0.98rem;
+  margin: 4px 0 8px;
+}
+
+.probe-editor .add-row {
+  margin-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .probe-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 双探头结果 */
+.dual-result .totals {
+  font-size: 0.88rem;
+  color: #3e4c59;
+  margin: 6px 0 12px;
+}
+
+.probe-chart {
+  width: 100%;
+  height: auto;
+  background: #fff;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+}
+
+.dual-segments {
+  margin-top: 12px;
+  font-size: 0.85rem;
+}
+
+.dual-segments th,
+.dual-segments td {
+  padding: 6px 8px;
+}
+
+.source-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.source-probeA {
+  background: #0b6bcb;
+}
+
+.source-probeB {
+  background: #c05a00;
+}
+
+.source-both {
+  background: #5b3ea6;
+}
+
+tr[data-source='probeA'] td:first-child {
+  border-left: 4px solid #0b6bcb;
+}
+
+tr[data-source='probeB'] td:first-child {
+  border-left: 4px solid #c05a00;
+}
+
+tr[data-source='both'] td:first-child {
+  border-left: 4px solid #5b3ea6;
+}

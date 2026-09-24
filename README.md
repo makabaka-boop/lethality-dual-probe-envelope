@@ -11,6 +11,17 @@
 - 任一行非法 → 整次请求失败（HTTP 422），响应指明行号与字段，前端同时清除旧结论。
 - 不足量批次显示距门槛的差额；达标批次展示逐段贡献，可逐段复算放行值。
 
+### 双探头保守复核
+
+同一批次两支探头的采样时刻不完全一致时，质检员按**每一时刻较低的致死速率**形成保守结论，而不是简单取两份总 F₀ 的较小值。
+
+- 两支探头各自从 0 秒开始、结束于**同一秒**，并分别遵守上述全部时间/温度/间隔校验（问题按探头 + 行号定位）。
+- 后端取两组采样时刻的**并集**，在其上按原梯形法隐含的**分段线性**口径插值两条致死速率线。
+- 若两条速率线在区间内部交换高低，则在**交点处拆段**后积分下包络；每个保守段返回来源探头（`probeA` / `probeB` / `both` 重合）、两探头各自速率与段贡献。
+- 响应同时给出两探头各自总量与**保守总量**；放行只用**未舍入**的保守总量与 3.00 min 门槛比较（`conservativeF0` 仅为四舍五入展示口径）。
+- 页面并列显示两支探头的速率曲线（含交点、按下包络来源着色）与保守段明细表，**表格与图形使用同一响应**。
+- 双探头输入或请求失败只清除本次比较，不改写已经显示的单探头结论；原 `/api/lethality` 接口及其响应保持兼容。
+
 ## 快速开始（Docker Compose）
 
 ```bash
@@ -105,6 +116,60 @@ docker compose --profile e2e run --rm e2e
 ### `GET /api/health`
 
 返回 `{"status": "ok"}`。
+
+### `POST /api/lethality/dual`
+
+双探头保守复核。请求体（两支探头各自携带 `points`，校验规则同上，问题多一个 `probe` 字段）：
+
+```json
+{
+  "probeA": {
+    "points": [
+      { "time": 0, "temperature": 121.1 },
+      { "time": 30, "temperature": 123.0 },
+      { "time": 60, "temperature": 121.1 }
+    ]
+  },
+  "probeB": {
+    "points": [
+      { "time": 0, "temperature": 123.0 },
+      { "time": 60, "temperature": 123.0 }
+    ]
+  }
+}
+```
+
+响应（200，节选）：
+
+```json
+{
+  "threshold": 3.0,
+  "probeA": { "probe": "probeA", "points": [{ "time": 0, "temperature": 121.1, "rate": 1.0 }],
+              "totalUnrounded": 1.23, "f0": 1.23 },
+  "probeB": { "...": "..." },
+  "probeATotalUnrounded": 1.23,
+  "probeBTotalUnrounded": 2.00,
+  "conservativeUnrounded": 1.18,
+  "conservativeF0": 1.18,
+  "passed": false,
+  "shortfall": 1.82,
+  "segments": [
+    {
+      "index": 1,
+      "startTime": 0.0, "endTime": 22.5, "durationSeconds": 22.5,
+      "source": "probeA",
+      "startRate": 1.0, "endRate": 1.6,
+      "probeAStartRate": 1.0, "probeAEndRate": 1.6,
+      "probeBStartRate": 1.5, "probeBEndRate": 1.6,
+      "contribution": 0.4875
+    }
+  ]
+}
+```
+
+- `source` 为 `probeA` / `probeB` / `both`（两线重合）；交点拆段后相邻段在交点处速率相等。
+- 段 `startTime/endTime` 为交点时可以是小数秒（采样时刻本身仍是整数秒）。
+- 跨探头整体问题（如两支探头结束秒不一致）：`{"row": null, "field": "probe", "probe": null, ...}`；单支探头的问题带 `"probe": "probeA" | "probeB"`。
 
 ## 本地开发
 

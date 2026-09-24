@@ -6,10 +6,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .lethality import THRESHOLD_MINUTES, compute_lethality
-from .validation import ValidationIssue, validate_payload
+from .lethality import THRESHOLD_MINUTES, compute_lethality, lethality_rate
+from .lethality_dual import compute_dual_lethality
+from .validation import ValidationIssue, validate_dual_payload, validate_payload
 
-app = FastAPI(title="蒸汽杀菌致死量 F₀ 复核", version="1.0.0")
+app = FastAPI(title="蒸汽杀菌致死量 F₀ 复核", version="1.1.0")
 
 # 内部质检工具：放开跨域以便本地开发直连；生产部署经 nginx 同源代理
 app.add_middleware(
@@ -21,7 +22,13 @@ app.add_middleware(
 
 
 def _issue_to_dict(issue: ValidationIssue) -> dict:
-    return {"row": issue.row, "field": issue.field, "message": issue.message}
+    # 双探头问题带 probe 标识（probeA/probeB），单探头接口恒为 null
+    return {
+        "row": issue.row,
+        "field": issue.field,
+        "message": issue.message,
+        "probe": issue.probe,
+    }
 
 
 def _validation_response(issues: list[ValidationIssue]) -> JSONResponse:
@@ -72,6 +79,66 @@ async def calculate(request: Request):
                 "durationSeconds": s.duration_seconds,
                 # 段贡献保持未舍入：各段之和须能复算未舍入合计，
                 # 仅最终 F₀ 四舍五入到两位小数
+                "contribution": s.contribution,
+            }
+            for s in result.segments
+        ],
+    }
+
+
+def _probe_curve_dict(curve) -> dict:
+    return {
+        "probe": curve.probe,
+        "points": [
+            {"time": t, "temperature": temp, "rate": lethality_rate(temp)}
+            for t, temp in curve.points
+        ],
+        "totalUnrounded": curve.total_unrounded,
+        "f0": curve.f0,
+    }
+
+
+@app.post("/api/lethality/dual")
+async def calculate_dual(request: Request):
+    """双探头保守复核：两探头各自校验后，在下包络上积分保守 F₀。"""
+    try:
+        payload = await request.json()
+    except Exception:
+        return _validation_response(
+            [ValidationIssue(None, "body", "请求体必须为有效的 JSON")]
+        )
+
+    probes, issues = validate_dual_payload(payload)
+    if issues:
+        return _validation_response(issues)
+
+    result = compute_dual_lethality(probes["probeA"], probes["probeB"])
+    return {
+        "threshold": result.threshold,
+        "probeA": _probe_curve_dict(result.probe_a),
+        "probeB": _probe_curve_dict(result.probe_b),
+        "probeATotalUnrounded": result.probe_a.total_unrounded,
+        "probeBTotalUnrounded": result.probe_b.total_unrounded,
+        "probeAF0": result.probe_a.f0,
+        "probeBF0": result.probe_b.f0,
+        # 保守总量：未舍入值用于放行判定与逐段复算，f0 仅为展示口径
+        "conservativeUnrounded": result.conservative_unrounded,
+        "conservativeF0": result.conservative_f0,
+        "passed": result.passed,
+        "shortfall": result.shortfall,
+        "segments": [
+            {
+                "index": s.index,
+                "startTime": s.start_time,
+                "endTime": s.end_time,
+                "durationSeconds": s.duration_seconds,
+                "source": s.source,
+                "startRate": s.start_rate,
+                "endRate": s.end_rate,
+                "probeAStartRate": s.rate_a_start,
+                "probeAEndRate": s.rate_a_end,
+                "probeBStartRate": s.rate_b_start,
+                "probeBEndRate": s.rate_b_end,
                 "contribution": s.contribution,
             }
             for s in result.segments

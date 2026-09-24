@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ApiError, calculateLethality } from './api.js';
 import { fieldLabel } from './format.js';
 import ResultPanel from './ResultPanel.jsx';
+import DualProbeView from './DualProbeView.jsx';
 
 // 默认示例：121.1 °C 恒温 180 秒，F₀ 恰为 3.00 min
 const DEFAULT_ROWS = [
@@ -22,6 +23,7 @@ function toPayload(rows) {
 }
 
 export default function App() {
+  const [mode, setMode] = useState('single'); // single | dual
   const [rows, setRows] = useState(DEFAULT_ROWS);
   const [result, setResult] = useState(null);
   const [errors, setErrors] = useState([]);
@@ -82,87 +84,114 @@ export default function App() {
       <p className="hint">
         录入釜内探头采样：时间从 0 秒起严格递增、相邻间隔 ≤ 60 秒，温度 100.0–140.0
         °C。提交后按梯形法积分，各段未舍入累加，F₀ 四舍五入保留两位小数，达到
-        3.00 min 即放行。
+        3.00 min 即放行。两支探头采样时刻不一致时，请用双探头保守复核入口。
       </p>
 
-      <table className="samples">
-        <thead>
-          <tr>
-            <th>行</th>
-            <th>时间 (秒)</th>
-            <th>温度 (°C)</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr
-              key={index}
-              className={errorRows.has(index + 1) ? 'row-error' : undefined}
-            >
-              <td className="row-index">{index + 1}</td>
-              <td>
-                <input
-                  aria-label={`时间 第${index + 1}行`}
-                  inputMode="numeric"
-                  value={row.time}
-                  onChange={(e) => updateRow(index, 'time', e.target.value)}
-                />
-              </td>
-              <td>
-                <input
-                  aria-label={`温度 第${index + 1}行`}
-                  inputMode="decimal"
-                  value={row.temperature}
-                  onChange={(e) => updateRow(index, 'temperature', e.target.value)}
-                />
-              </td>
-              <td>
-                <button
-                  type="button"
-                  aria-label={`删除 第${index + 1}行`}
-                  onClick={() => removeRow(index)}
-                  disabled={rows.length <= MIN_ROWS}
-                >
-                  删除
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div className="actions">
-        <button type="button" onClick={addRow}>
-          添加采样行
+      <div className="mode-switch" role="tablist" aria-label="复核模式">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'single'}
+          className={mode === 'single' ? 'active' : undefined}
+          onClick={() => setMode('single')}
+        >
+          单探头复核
         </button>
         <button
           type="button"
-          className="primary"
-          onClick={submit}
-          disabled={submitting}
+          role="tab"
+          aria-selected={mode === 'dual'}
+          className={mode === 'dual' ? 'active' : undefined}
+          onClick={() => setMode('dual')}
         >
-          {submitting ? '计算中…' : '计算致死量'}
+          双探头保守复核
         </button>
       </div>
 
-      {errors.length > 0 && (
-        <section className="errors" role="alert" aria-label="校验错误">
-          <h2>本次请求被拒绝</h2>
-          <ul>
-            {errors.map((error, i) => (
-              <li key={i}>
-                {error.row != null
-                  ? `第 ${error.row} 行 · ${fieldLabel(error.field)}`
-                  : fieldLabel(error.field)}
-                ：{error.message}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {mode === 'single' ? (
+        <>
+          <table className="samples">
+            <thead>
+              <tr>
+                <th>行</th>
+                <th>时间 (秒)</th>
+                <th>温度 (°C)</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr
+                  key={index}
+                  className={errorRows.has(index + 1) ? 'row-error' : undefined}
+                >
+                  <td className="row-index">{index + 1}</td>
+                  <td>
+                    <input
+                      aria-label={`时间 第${index + 1}行`}
+                      inputMode="numeric"
+                      value={row.time}
+                      onChange={(e) => updateRow(index, 'time', e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      aria-label={`温度 第${index + 1}行`}
+                      inputMode="decimal"
+                      value={row.temperature}
+                      onChange={(e) => updateRow(index, 'temperature', e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      aria-label={`删除 第${index + 1}行`}
+                      onClick={() => removeRow(index)}
+                      disabled={rows.length <= MIN_ROWS}
+                    >
+                      删除
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
-      <ResultPanel result={result} />
+          <div className="actions">
+            <button type="button" onClick={addRow}>
+              添加采样行
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={submit}
+              disabled={submitting}
+            >
+              {submitting ? '计算中…' : '计算致死量'}
+            </button>
+          </div>
+
+          {errors.length > 0 && (
+            <section className="errors" role="alert" aria-label="校验错误">
+              <h2>本次请求被拒绝</h2>
+              <ul>
+                {errors.map((error, i) => (
+                  <li key={i}>
+                    {error.row != null
+                      ? `第 ${error.row} 行 · ${fieldLabel(error.field)}`
+                      : fieldLabel(error.field)}
+                    ：{error.message}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <ResultPanel result={result} />
+        </>
+      ) : (
+        <DualProbeView />
+      )}
     </main>
   );
 }

@@ -6,6 +6,9 @@ const baseURL =
 
 export default defineConfig({
   testDir: './e2e',
+  // 仅 *.spec.js 为联调用例，避免把同目录或相邻目录的非 spec 文件
+  // （如 vitest 的 setup）误当作 Playwright 测试加载
+  testMatch: '**/*.spec.js',
   timeout: 30_000,
   retries: 0,
   reporter: [['list']],
