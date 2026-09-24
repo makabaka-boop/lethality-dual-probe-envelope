@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ApiError, calculateLethality } from './api.js';
 import { fieldLabel } from './format.js';
+import DualProbeSection from './DualProbeSection.jsx';
 import ResultPanel from './ResultPanel.jsx';
 
 // 默认示例：121.1 °C 恒温 180 秒，F₀ 恰为 3.00 min
@@ -163,6 +164,8 @@ export default function App() {
       )}
 
       <ResultPanel result={result} />
+
+      <DualProbeSection />
     </main>
   );
 }

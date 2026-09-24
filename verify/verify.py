@@ -171,6 +171,90 @@ def main() -> int:
         f"{status} {body}",
     )
 
+    # 11. 双探头换源样例：A 前低后高、B 前高后低，速率线在 90 秒相交。
+    # 两探头各自总量均为 6.2039 min，但逐时刻取低的保守总量仅 1.6477 min，
+    # 验证保守结论不是简单取两份总量的较小值。
+    crossover = {
+        "probeA": [
+            {"time": 0, "temperature": 115.0},
+            {"time": 60, "temperature": 115.0},
+            {"time": 120, "temperature": 127.0},
+            {"time": 180, "temperature": 127.0},
+        ],
+        "probeB": [
+            {"time": 0, "temperature": 127.0},
+            {"time": 60, "temperature": 127.0},
+            {"time": 120, "temperature": 115.0},
+            {"time": 180, "temperature": 115.0},
+        ],
+    }
+    status, body = request("POST", f"{API_URL}/api/lethality/dual", crossover)
+    segments = (body or {}).get("segments", [])
+    ok = (
+        status == 200
+        and body.get("passed") is False
+        and abs(body.get("conservativeTotal", 0) - 1.6476578146) < 1e-9
+        and abs(body.get("probeATotal", 0) - 6.2038835124) < 1e-9
+        and abs(body.get("probeBTotal", 0) - 6.2038835124) < 1e-9
+        and len(segments) == 4
+        and [s.get("source") for s in segments] == ["A", "A", "B", "B"]
+        and abs(segments[1].get("endTime", 0) - 90.0) < 1e-9
+        and abs(sum(s.get("contribution", 0) for s in segments) - 1.6476578146) < 1e-9
+    )
+    check("双探头换源：交点 90 秒拆段、保守总量 1.6477 低于各自总量", ok, f"{status} {body}")
+
+    # 12. 双探头重合样例：两探头相同，保守 F₀ = 3.00 放行
+    identical = {"probeA": passing["points"], "probeB": passing["points"]}
+    status, body = request("POST", f"{API_URL}/api/lethality/dual", identical)
+    ok = (
+        status == 200
+        and body.get("passed") is True
+        and abs(body.get("conservativeTotal", 0) - 3.0) < 1e-9
+        and all(s.get("source") == "both" for s in body.get("segments", []))
+    )
+    check("双探头重合：保守 F₀=3.00 放行且段来源为 both", ok, f"{status} {body}")
+
+    # 13. 双探头结束时刻不一致 → 422 整体问题
+    mismatched = {
+        "probeA": passing["points"],
+        "probeB": [{"time": t, "temperature": 121.1} for t in (0, 60, 120, 150)],
+    }
+    status, body = request("POST", f"{API_URL}/api/lethality/dual", mismatched)
+    errors = (body or {}).get("detail", {}).get("errors", [])
+    check(
+        "双探头结束时刻不一致返回 422",
+        status == 422 and has_error(errors, None, "points"),
+        f"{status} {body}",
+    )
+
+    # 14. 双探头非法行带探头归属定位
+    bad_probe = {
+        "probeA": passing["points"],
+        "probeB": [
+            {"time": 0, "temperature": 121.1},
+            {"time": 60, "temperature": 99.9},
+            {"time": 120, "temperature": 121.1},
+            {"time": 180, "temperature": 121.1},
+        ],
+    }
+    status, body = request("POST", f"{API_URL}/api/lethality/dual", bad_probe)
+    errors = (body or {}).get("detail", {}).get("errors", [])
+    ok = status == 422 and any(
+        e.get("probe") == "B" and e.get("row") == 2 and e.get("field") == "temperature"
+        for e in errors
+    )
+    check("双探头温度越界返回 422 并定位探头B 第 2 行", ok, f"{status} {body}")
+
+    # 15. 经 Web 代理调用双探头接口
+    status, body = request("POST", f"{WEB_URL}/api/lethality/dual", identical)
+    check(
+        "经 Web 代理双探头复核保守 F₀=3.00 放行",
+        status == 200
+        and body.get("passed") is True
+        and abs(body.get("conservativeTotal", 0) - 3.0) < 1e-9,
+        f"{status} {body}",
+    )
+
     print("=" * 48, flush=True)
     if failures:
         print(f"验收失败：{len(failures)} 项未通过", flush=True)

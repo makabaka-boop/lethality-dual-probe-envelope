@@ -148,3 +148,93 @@ button.primary {
   font-weight: 600;
   background: #eef2f6;
 }
+
+/* 双探头复核 */
+.dual-section {
+  margin-top: 40px;
+  border-top: 2px solid #d9e2ec;
+  padding-top: 16px;
+}
+
+.dual-section h2 {
+  font-size: 1.2rem;
+  margin: 0 0 8px;
+}
+
+.dual-tables {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.dual-tables .dual-samples {
+  flex: 1 1 320px;
+}
+
+.dual-samples tfoot td {
+  background: #eef2f6;
+}
+
+.dual-result h3 {
+  font-size: 1rem;
+  margin: 0 0 8px;
+}
+
+.dual-totals {
+  font-size: 0.9rem;
+  color: #52606d;
+}
+
+.dual-chart {
+  margin: 12px 0;
+}
+
+.dual-chart svg {
+  width: 100%;
+  max-width: 640px;
+  background: #fff;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+}
+
+.dual-chart .tick {
+  font-size: 11px;
+  fill: #52606d;
+}
+
+.legend {
+  display: flex;
+  gap: 16px;
+  font-size: 0.85rem;
+  margin-top: 6px;
+}
+
+.legend-item::before {
+  content: '';
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.legend-item.probe-a::before {
+  background: #0b6bcb;
+}
+
+.legend-item.probe-b::before {
+  background: #d97706;
+}
+
+.legend-item.envelope::before {
+  background: #1c7c3c;
+}
+
+.dual-segments {
+  margin-top: 12px;
+}
+
+.dual-segments tfoot td {
+  font-weight: 600;
+  background: #eef2f6;
+}

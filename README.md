@@ -11,6 +11,18 @@
 - 任一行非法 → 整次请求失败（HTTP 422），响应指明行号与字段，前端同时清除旧结论。
 - 不足量批次显示距门槛的差额；达标批次展示逐段贡献，可逐段复算放行值。
 
+## 双探头复核
+
+同一批次的两支探头采样时刻不完全一致时，质检员按**每一时刻较低的致死速率**形成保守结论——不能简单取两份总 F₀ 的较小值：
+
+- 两组采样各自遵守与单探头相同的时间、温度和间隔校验，且均从 0 秒开始、**结束于同一秒**。
+- 后端在两组采样时刻的**并集**上，按梯形法隐含的**分段线性致死速率**对两条曲线插值。
+- 两条速率线在区间内部交换高低时，在**交点拆段**后对下包络逐段梯形积分；响应给出每段来源探头、贡献、两探头各自总量及保守总量。
+- 保守总量是逐时刻取低的积分，必然不高于任一探头各自总量。
+- **放行只用未舍入的保守总量与 3.00 min 门槛比较**（与单探头"四舍五入后判定"的口径不同，不做任何舍入）。
+- 页面并列显示两支探头的速率曲线、保守下包络与保守段明细，表格与图形使用同一响应。
+- 双探头输入或请求失败只清除本次比较结果，不改写已经显示的单探头结论；单探头接口及其响应保持兼容。
+
 ## 快速开始（Docker Compose）
 
 ```bash
@@ -97,6 +109,71 @@ docker compose --profile e2e run --rm e2e
     "message": "采样数据校验失败，整次请求已拒绝",
     "errors": [
       { "row": 2, "field": "temperature", "message": "温度须在 100.0 至 140.0 °C 之间" }
+    ]
+  }
+}
+```
+
+### `POST /api/lethality/dual`
+
+双探头复核。请求（两组采样各自遵守单探头的全部校验，且须结束于同一秒）：
+
+```json
+{
+  "probeA": [
+    { "time": 0,   "temperature": 115.0 },
+    { "time": 60,  "temperature": 115.0 },
+    { "time": 120, "temperature": 127.0 },
+    { "time": 180, "temperature": 127.0 }
+  ],
+  "probeB": [
+    { "time": 0,   "temperature": 127.0 },
+    { "time": 60,  "temperature": 127.0 },
+    { "time": 120, "temperature": 115.0 },
+    { "time": 180, "temperature": 115.0 }
+  ]
+}
+```
+
+响应（200；上例两条速率线在 90 秒相交，交点拆段后共 4 段）：
+
+```json
+{
+  "threshold": 3.0,
+  "passed": false,
+  "conservativeTotal": 1.6476578143,
+  "probeATotal": 6.2038835123,
+  "probeBTotal": 6.2038835123,
+  "shortfall": 1.3523421857,
+  "probeA": { "series": [ { "time": 0, "rate": 0.2454708916 } ] },
+  "probeB": { "series": [ { "time": 0, "rate": 3.8904514499 } ] },
+  "segments": [
+    {
+      "index": 2,
+      "startTime": 60,
+      "endTime": 90.0,
+      "source": "A",
+      "startRate": 0.2454708916,
+      "endRate": 2.0679611707,
+      "durationSeconds": 30.0,
+      "contribution": 0.5783580156
+    }
+  ]
+}
+```
+
+- `conservativeTotal` / `probeATotal` / `probeBTotal` / `shortfall` 均为**未舍入**值；`passed` 只由未舍入保守总量 ≥ 3.00 得出。
+- `segments[].source` 为 `"A"` / `"B"` / `"both"`（两探头速率整段重合）；交点拆段的端点秒数可以是小数。
+- `series` 为各探头采样点处的速率折线，供页面绘制曲线；保守下包络由 `segments` 拼接，表格与图形同源。
+
+校验失败响应（422，错误条目额外携带 `probe` 归属；结束时刻不一致为整体问题，`probe` 与 `row` 均为 `null`）：
+
+```json
+{
+  "detail": {
+    "message": "双探头采样数据校验失败，整次请求已拒绝",
+    "errors": [
+      { "row": 2, "field": "temperature", "message": "温度须在 100.0 至 140.0 °C 之间", "probe": "B" }
     ]
   }
 }
